@@ -1,0 +1,23 @@
+{
+  "name": "linear-cli",
+  "version": "0.1.0",
+  "description": "A Bun-based CLI for Linear.",
+  "module": "index.ts",
+  "type": "module",
+  "bin": {
+    "linear-cli": "./index.ts"
+  },
+  "scripts": {
+    "start": "bun run index.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/bun": "latest"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  },
+  "dependencies": {
+    "@linear/sdk": "^86.0.0"
+  }
+}
