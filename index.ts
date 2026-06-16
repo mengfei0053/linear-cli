@@ -926,8 +926,13 @@ function validateIssueUpdateOptions(options: IssueUpdateOptions): void {
 			`Missing issue id. Usage: ${COMMAND_NAME} issue update <issue-id> [options]`,
 		);
 	}
-	if (options.description !== undefined && options.appendDescription !== undefined) {
-		throw new Error("Use either --description or --append-description, not both");
+	if (
+		options.description !== undefined &&
+		options.appendDescription !== undefined
+	) {
+		throw new Error(
+			"Use either --description or --append-description, not both",
+		);
 	}
 	if (
 		options.title === undefined &&
@@ -987,7 +992,9 @@ async function resolveIssueStatusId(
 
 	const team = await issue.team;
 	if (!team) {
-		throw new Error(`Issue ${issue.identifier} does not have an accessible team`);
+		throw new Error(
+			`Issue ${issue.identifier} does not have an accessible team`,
+		);
 	}
 
 	return (await findWorkflowState(team, status)).id;
