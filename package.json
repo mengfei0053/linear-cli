@@ -5,9 +5,10 @@
   "module": "index.ts",
   "type": "module",
   "bin": {
-    "linear": "./index.ts"
+    "linear": "./bin/linear"
   },
   "files": [
+    "bin/linear",
     "index.ts",
     "README.md"
   ],
