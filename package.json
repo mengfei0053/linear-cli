@@ -2,10 +2,14 @@
   "name": "@fe-essential/linear-cli",
   "version": "0.1.2",
   "description": "A Bun-based CLI for Linear.",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/mengfei0053/linear-cli"
+  },
   "module": "index.ts",
   "type": "module",
   "bin": {
-    "linear": "./bin/linear"
+    "linear": "bin/linear"
   },
   "files": [
     "bin/linear",
