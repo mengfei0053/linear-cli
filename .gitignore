@@ -18,6 +18,9 @@ report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 # local config files
 linear.config.yaml
 
+# local npm auth config
+.npmrc
+
 # dotenv environment variable files
 .env
 .env.development.local
