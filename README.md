@@ -132,13 +132,22 @@ bun run typecheck
 
 The GitHub Actions release workflow publishes to npm and creates a GitHub Release when a version tag is pushed.
 
-1. Ensure `package.json` has the target version.
-2. Create and push a matching tag, for example `v0.1.0`.
-3. Configure the repository secret `NPM_TOKEN` with npm publish permissions.
+First configure the repository secret `NPM_TOKEN` with npm publish permissions.
+
+Then run one of the release scripts from a clean working tree:
 
 ```bash
-git tag v0.1.0
-git push origin v0.1.0
+bun run release:patch  # 0.1.0 -> 0.1.1
+bun run release:minor  # 0.1.0 -> 0.2.0
+bun run release:major  # 0.1.0 -> 1.0.0
 ```
+
+The script automatically:
+
+1. bumps `package.json` version;
+2. runs typecheck;
+3. commits `chore: release v${version}`;
+4. creates the matching git tag;
+5. pushes the branch and tag to trigger publishing.
 
 The tag must match the package version exactly (`v${version}`).
