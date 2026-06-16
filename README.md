@@ -109,7 +109,11 @@ Add an issue to the configured project. The default status is `Backlog`:
 ```bash
 linear issue add "Fix login bug"
 linear issue add "Fix login bug" -d "Reproduce and patch auth flow"
+linear issue add "Fix login bug" --image ./screenshot.png
+linear issue add "Fix login bug" -d "See screenshots" --image ./before.png --image ./after.png
 ```
+
+Image uploads support `gif`, `jpeg`, `jpg`, `png`, and `webp`. Uploaded images are embedded in the issue description.
 
 Delete an issue by Linear issue id:
 

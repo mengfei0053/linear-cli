@@ -2,7 +2,7 @@
 
 import { LinearClient } from "@linear/sdk";
 import { existsSync } from "node:fs";
-import { mkdir, readFile } from "node:fs/promises";
+import { mkdir, readFile, stat } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { createInterface } from "node:readline/promises";
@@ -13,6 +13,13 @@ const GLOBAL_CONFIG_DIR = path.join(os.homedir(), ".config", COMMAND_NAME);
 const UUID_PATTERN =
 	/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const ONE_DAY_IN_MS = 24 * 60 * 60 * 1000;
+const IMAGE_CONTENT_TYPES = new Map([
+	[".gif", "image/gif"],
+	[".jpeg", "image/jpeg"],
+	[".jpg", "image/jpeg"],
+	[".png", "image/png"],
+	[".webp", "image/webp"],
+]);
 
 type LinearConfig = {
 	api_key: string;
@@ -45,6 +52,12 @@ type WorkflowStateNode = Awaited<
 type IssueAddOptions = {
 	title: string;
 	description?: string;
+	imagePaths: string[];
+};
+
+type UploadedIssueImage = {
+	filename: string;
+	assetUrl: string;
 };
 
 type IssueDeleteOptions = {
@@ -98,7 +111,7 @@ Examples:
 function printIssueHelp(): void {
 	console.log(`Usage:
   ${COMMAND_NAME} issue list [-s <status>]
-  ${COMMAND_NAME} issue add <title> [-d <description>]
+  ${COMMAND_NAME} issue add <title> [-d <description>] [--image <path>]
   ${COMMAND_NAME} issue delete <issue-id>
   ${COMMAND_NAME} issue delete --date <YYYY-MM-DD> [--yes]
 
@@ -113,6 +126,7 @@ Subcommands:
 Examples:
   ${COMMAND_NAME} issue list
   ${COMMAND_NAME} issue add "Fix login bug" -d "Reproduce and patch auth flow"
+  ${COMMAND_NAME} issue add "Fix login bug" --image ./screenshot.png
   ${COMMAND_NAME} issue delete 01234567-89ab-cdef-0123-456789abcdef
   ${COMMAND_NAME} issue delete --date 2026-06-11 --yes`);
 }
@@ -136,18 +150,20 @@ Examples:
 
 function printIssueAddHelp(): void {
 	console.log(`Usage:
-  ${COMMAND_NAME} issue add <title> [-d <description>]
+  ${COMMAND_NAME} issue add <title> [-d <description>] [--image <path>]
 
 Description:
   Add an issue to the configured project. The issue status defaults to Backlog.
 
 Options:
   -d, --description <description>  Issue description
+  -i, --image <path>               Upload an image and embed it in the description. Repeatable.
   -h, --help                       Show this help
 
 Examples:
   ${COMMAND_NAME} issue add "Fix login bug"
-  ${COMMAND_NAME} issue add "Fix login bug" -d "Reproduce and patch auth flow"`);
+  ${COMMAND_NAME} issue add "Fix login bug" -d "Reproduce and patch auth flow"
+  ${COMMAND_NAME} issue add "Fix login bug" --image ./screenshot.png`);
 }
 
 function printIssueDeleteHelp(): void {
@@ -637,6 +653,7 @@ async function getBacklogState(team: TeamNode): Promise<WorkflowStateNode> {
 
 function parseIssueAddOptions(args: string[]): IssueAddOptions {
 	const titleParts: string[] = [];
+	const imagePaths: string[] = [];
 	let description: string | undefined;
 
 	for (let index = 0; index < args.length; index += 1) {
@@ -646,7 +663,7 @@ function parseIssueAddOptions(args: string[]): IssueAddOptions {
 			const value = args[index + 1];
 			if (!value) {
 				throw new Error(
-					`Missing value for ${arg}. Usage: ${COMMAND_NAME} issue add <title> [-d <description>]`,
+					`Missing value for ${arg}. Usage: ${COMMAND_NAME} issue add <title> [-d <description>] [--image <path>]`,
 				);
 			}
 			description = value;
@@ -654,9 +671,21 @@ function parseIssueAddOptions(args: string[]): IssueAddOptions {
 			continue;
 		}
 
+		if (arg === "-i" || arg === "--image") {
+			const value = args[index + 1];
+			if (!value) {
+				throw new Error(
+					`Missing value for ${arg}. Usage: ${COMMAND_NAME} issue add <title> [-d <description>] [--image <path>]`,
+				);
+			}
+			imagePaths.push(value);
+			index += 1;
+			continue;
+		}
+
 		if (arg?.startsWith("-")) {
 			throw new Error(
-				`Unknown issue add option: ${arg}. Usage: ${COMMAND_NAME} issue add <title> [-d <description>]`,
+				`Unknown issue add option: ${arg}. Usage: ${COMMAND_NAME} issue add <title> [-d <description>] [--image <path>]`,
 			);
 		}
 
@@ -668,11 +697,96 @@ function parseIssueAddOptions(args: string[]): IssueAddOptions {
 	const title = titleParts.join(" ").trim();
 	if (!title) {
 		throw new Error(
-			`Missing issue title. Usage: ${COMMAND_NAME} issue add <title> [-d <description>]`,
+			`Missing issue title. Usage: ${COMMAND_NAME} issue add <title> [-d <description>] [--image <path>]`,
 		);
 	}
 
-	return { title, description };
+	return { title, description, imagePaths };
+}
+
+function getImageContentType(imagePath: string): string {
+	const extension = path.extname(imagePath).toLowerCase();
+	const contentType = IMAGE_CONTENT_TYPES.get(extension);
+
+	if (!contentType) {
+		throw new Error(
+			`Unsupported image type for ${imagePath}. Supported types: gif, jpeg, jpg, png, webp`,
+		);
+	}
+
+	return contentType;
+}
+
+function appendUploadedImagesToDescription(
+	description: string | undefined,
+	images: UploadedIssueImage[],
+): string | undefined {
+	if (images.length === 0) {
+		return description;
+	}
+
+	const imageMarkdown = images
+		.map((image) => `![${image.filename}](${image.assetUrl})`)
+		.join("\n\n");
+	const trimmedDescription = description?.trim();
+
+	return trimmedDescription
+		? `${trimmedDescription}\n\n${imageMarkdown}`
+		: imageMarkdown;
+}
+
+async function uploadIssueImage(
+	linearClient: LinearClient,
+	imagePath: string,
+): Promise<UploadedIssueImage> {
+	const absolutePath = path.resolve(imagePath);
+	const fileStats = await stat(absolutePath);
+
+	if (!fileStats.isFile()) {
+		throw new Error(`Image path is not a file: ${imagePath}`);
+	}
+
+	const filename = path.basename(absolutePath);
+	const contentType = getImageContentType(absolutePath);
+	const uploadPayload = await linearClient.fileUpload(
+		contentType,
+		filename,
+		fileStats.size,
+	);
+	const uploadFile = uploadPayload.uploadFile;
+
+	if (!uploadPayload.success || !uploadFile) {
+		throw new Error(`Linear did not return an upload URL for ${imagePath}`);
+	}
+
+	const response = await fetch(uploadFile.uploadUrl, {
+		method: "PUT",
+		headers: Object.fromEntries(
+			uploadFile.headers.map((header) => [header.key, header.value]),
+		),
+		body: Bun.file(absolutePath),
+	});
+
+	if (!response.ok) {
+		throw new Error(
+			`Failed to upload ${imagePath}: ${response.status} ${response.statusText}`,
+		);
+	}
+
+	return { filename, assetUrl: uploadFile.assetUrl };
+}
+
+async function uploadIssueImages(
+	linearClient: LinearClient,
+	imagePaths: string[],
+): Promise<UploadedIssueImage[]> {
+	const uploadedImages: UploadedIssueImage[] = [];
+
+	for (const imagePath of imagePaths) {
+		uploadedImages.push(await uploadIssueImage(linearClient, imagePath));
+	}
+
+	return uploadedImages;
 }
 
 async function addIssue(args: string[]): Promise<void> {
@@ -689,9 +803,16 @@ async function addIssue(args: string[]): Promise<void> {
 	);
 	const team = await getProjectTeam(project);
 	const backlogState = await getBacklogState(team);
+	const uploadedImages = await uploadIssueImages(
+		linearClient,
+		options.imagePaths,
+	);
 	const payload = await linearClient.createIssue({
 		title: options.title,
-		description: options.description,
+		description: appendUploadedImagesToDescription(
+			options.description,
+			uploadedImages,
+		),
 		teamId: team.id,
 		projectId: project.id,
 		stateId: backlogState.id,
