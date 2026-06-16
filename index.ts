@@ -123,6 +123,7 @@ function printIssueHelp(): void {
 	console.log(`Usage:
   ${COMMAND_NAME} issue list [-s <status>]
   ${COMMAND_NAME} issue add <title> [-d <description>] [--image <path>]
+  ${COMMAND_NAME} issue read <issue-id>
   ${COMMAND_NAME} issue update <issue-id> [options]
   ${COMMAND_NAME} issue delete <issue-id>
   ${COMMAND_NAME} issue delete --date <YYYY-MM-DD> [--yes]
@@ -133,6 +134,7 @@ Description:
 Subcommands:
   list    List issues in the configured project
   add     Add an issue to the configured project with Backlog status
+  read    Read one issue with status, URL, and description
   update  Update issue title, description, images, or status
   delete  Delete one issue by id, or issues created on a date
 
@@ -140,6 +142,7 @@ Examples:
   ${COMMAND_NAME} issue list
   ${COMMAND_NAME} issue add "Fix login bug" -d "Reproduce and patch auth flow"
   ${COMMAND_NAME} issue add "Fix login bug" --image ./screenshot.png
+  ${COMMAND_NAME} issue read LIN-123
   ${COMMAND_NAME} issue update LIN-123 -d "Updated details" -s Done
   ${COMMAND_NAME} issue delete 01234567-89ab-cdef-0123-456789abcdef
   ${COMMAND_NAME} issue delete --date 2026-06-11 --yes`);
@@ -178,6 +181,21 @@ Examples:
   ${COMMAND_NAME} issue add "Fix login bug"
   ${COMMAND_NAME} issue add "Fix login bug" -d "Reproduce and patch auth flow"
   ${COMMAND_NAME} issue add "Fix login bug" --image ./screenshot.png`);
+}
+
+function printIssueReadHelp(): void {
+	console.log(`Usage:
+  ${COMMAND_NAME} issue read <issue-id>
+
+Description:
+  Read one Linear issue by UUID or human-readable identifier.
+
+Options:
+  -h, --help  Show this help
+
+Examples:
+  ${COMMAND_NAME} issue read LIN-123
+  ${COMMAND_NAME} issue read 01234567-89ab-cdef-0123-456789abcdef`);
 }
 
 function printIssueUpdateHelp(): void {
@@ -586,6 +604,29 @@ async function printIssue(issue: IssueNode): Promise<void> {
 	console.log(
 		`${issue.identifier}\t${issue.id}\t${formatDate(issue.createdAt)}\t${statusName}\t${issue.title}`,
 	);
+}
+
+async function readIssue(args: string[]): Promise<void> {
+	if (hasHelpOption(args)) {
+		printIssueReadHelp();
+		return;
+	}
+	if (args.length !== 1 || !args[0]) {
+		throw new Error(
+			`Usage: ${COMMAND_NAME} issue read <issue-id>`,
+		);
+	}
+
+	const linearClient = await createLinearClient();
+	const issue = await linearClient.issue(args[0]);
+	const statusName = await getIssueStatusName(issue);
+
+	console.log(`# ${issue.identifier}: ${issue.title}`);
+	console.log(`ID: ${issue.id}`);
+	console.log(`Status: ${statusName}`);
+	console.log(`URL: ${issue.url}`);
+	console.log("");
+	console.log(issue.description?.trim() || "(No description)");
 }
 
 async function fetchIssues(
@@ -1243,6 +1284,9 @@ async function runIssueCommand(args: string[]): Promise<void> {
 			return;
 		case "add":
 			await addIssue(subcommandArgs);
+			return;
+		case "read":
+			await readIssue(subcommandArgs);
 			return;
 		case "update":
 			await updateIssue(subcommandArgs);

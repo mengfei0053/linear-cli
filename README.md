@@ -115,6 +115,12 @@ linear issue add "Fix login bug" -d "See screenshots" --image ./before.png --ima
 
 Image uploads support `gif`, `jpeg`, `jpg`, `png`, and `webp`. Uploaded images are embedded in the issue description.
 
+Read one issue by Linear issue id or identifier:
+
+```bash
+linear issue read LIN-123
+```
+
 Update issue title, description, images, or status:
 
 ```bash
