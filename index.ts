@@ -7,7 +7,7 @@ import os from "node:os";
 import path from "node:path";
 import { createInterface } from "node:readline/promises";
 
-const COMMAND_NAME = "linear-cli";
+const COMMAND_NAME = "linear";
 const CONFIG_FILE_NAME = "linear.config.yaml";
 const GLOBAL_CONFIG_DIR = path.join(os.homedir(), ".config", COMMAND_NAME);
 const UUID_PATTERN =

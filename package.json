@@ -1,11 +1,18 @@
 {
-  "name": "linear-cli",
+  "name": "@fe-essential/linear-cli",
   "version": "0.1.0",
   "description": "A Bun-based CLI for Linear.",
   "module": "index.ts",
   "type": "module",
   "bin": {
-    "linear-cli": "./index.ts"
+    "linear": "./index.ts"
+  },
+  "files": [
+    "index.ts",
+    "README.md"
+  ],
+  "publishConfig": {
+    "access": "public"
   },
   "scripts": {
     "start": "bun run index.ts",
