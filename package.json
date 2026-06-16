@@ -1,6 +1,6 @@
 {
   "name": "@fe-essential/linear-cli",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "A Bun-based CLI for Linear.",
   "module": "index.ts",
   "type": "module",
