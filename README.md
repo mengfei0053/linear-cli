@@ -4,7 +4,20 @@ A Bun-based CLI for Linear.
 
 ## Install CLI
 
-Requires Bun in your `PATH` because the CLI is published as a Bun executable.
+Install globally with Bun:
+
+```bash
+bun add -g @fe-essential/linear-cli
+linear --help
+```
+
+If `linear` is not found, make sure Bun's global bin directory is in your `PATH`:
+
+```bash
+export PATH="$HOME/.bun/bin:$PATH"
+```
+
+You can also install with npm, but Bun must still be available in your `PATH` because the CLI is a Bun executable:
 
 ```bash
 npm install -g @fe-essential/linear-cli
