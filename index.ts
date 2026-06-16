@@ -55,6 +55,17 @@ type IssueAddOptions = {
 	imagePaths: string[];
 };
 
+type IssueUpdateOptions = {
+	issueId: string;
+	title?: string;
+	description?: string;
+	appendDescription?: string;
+	status?: string;
+	imagePaths: string[];
+};
+
+type IssueUpdateInput = Parameters<LinearClient["updateIssue"]>[1];
+
 type UploadedIssueImage = {
 	filename: string;
 	assetUrl: string;
@@ -112,6 +123,7 @@ function printIssueHelp(): void {
 	console.log(`Usage:
   ${COMMAND_NAME} issue list [-s <status>]
   ${COMMAND_NAME} issue add <title> [-d <description>] [--image <path>]
+  ${COMMAND_NAME} issue update <issue-id> [options]
   ${COMMAND_NAME} issue delete <issue-id>
   ${COMMAND_NAME} issue delete --date <YYYY-MM-DD> [--yes]
 
@@ -121,12 +133,14 @@ Description:
 Subcommands:
   list    List issues in the configured project
   add     Add an issue to the configured project with Backlog status
+  update  Update issue title, description, images, or status
   delete  Delete one issue by id, or issues created on a date
 
 Examples:
   ${COMMAND_NAME} issue list
   ${COMMAND_NAME} issue add "Fix login bug" -d "Reproduce and patch auth flow"
   ${COMMAND_NAME} issue add "Fix login bug" --image ./screenshot.png
+  ${COMMAND_NAME} issue update LIN-123 -d "Updated details" -s Done
   ${COMMAND_NAME} issue delete 01234567-89ab-cdef-0123-456789abcdef
   ${COMMAND_NAME} issue delete --date 2026-06-11 --yes`);
 }
@@ -164,6 +178,27 @@ Examples:
   ${COMMAND_NAME} issue add "Fix login bug"
   ${COMMAND_NAME} issue add "Fix login bug" -d "Reproduce and patch auth flow"
   ${COMMAND_NAME} issue add "Fix login bug" --image ./screenshot.png`);
+}
+
+function printIssueUpdateHelp(): void {
+	console.log(`Usage:
+  ${COMMAND_NAME} issue update <issue-id> [options]
+
+Description:
+  Update an issue title, description, embedded images, or workflow status.
+
+Options:
+  -t, --title <title>                    Replace issue title
+  -d, --description <description>        Replace issue description
+  --append-description <description>     Append text to the existing description
+  -i, --image <path>                     Upload an image and append it to the description. Repeatable.
+  -s, --status <status>                  Set workflow status by name, type, or UUID
+  -h, --help                             Show this help
+
+Examples:
+  ${COMMAND_NAME} issue update LIN-123 -d "Updated details"
+  ${COMMAND_NAME} issue update LIN-123 --append-description "More notes" --image ./screenshot.png
+  ${COMMAND_NAME} issue update LIN-123 -s Done`);
 }
 
 function printIssueDeleteHelp(): void {
@@ -631,24 +666,32 @@ async function getProjectTeam(project: ProjectNode): Promise<TeamNode> {
 	return team;
 }
 
-async function getBacklogState(team: TeamNode): Promise<WorkflowStateNode> {
+async function findWorkflowState(
+	team: TeamNode,
+	status: string,
+): Promise<WorkflowStateNode> {
 	const states = await team.states({
 		filter: {
 			or: [
-				{ name: { eqIgnoreCase: "Backlog" } },
-				{ type: { eqIgnoreCase: "backlog" } },
+				{ name: { eqIgnoreCase: status } },
+				{ type: { eqIgnoreCase: status } },
+				...(UUID_PATTERN.test(status) ? [{ id: { eq: status } }] : []),
 			],
 		},
 		first: 1,
 		includeArchived: false,
 	});
-	const backlogState = states.nodes[0];
+	const workflowState = states.nodes[0];
 
-	if (!backlogState) {
-		throw new Error(`Team "${team.name}" does not have a Backlog state`);
+	if (!workflowState) {
+		throw new Error(`Team "${team.name}" does not have status "${status}"`);
 	}
 
-	return backlogState;
+	return workflowState;
+}
+
+async function getBacklogState(team: TeamNode): Promise<WorkflowStateNode> {
+	return findWorkflowState(team, "Backlog");
 }
 
 function parseIssueAddOptions(args: string[]): IssueAddOptions {
@@ -824,6 +867,180 @@ async function addIssue(args: string[]): Promise<void> {
 	}
 
 	console.log(`Created ${issue.identifier} (${issue.id}): ${issue.title}`);
+}
+
+function readIssueUpdateOptionValue(
+	args: string[],
+	index: number,
+	arg: string,
+): string {
+	const value = args[index + 1];
+
+	if (!value) {
+		throw new Error(
+			`Missing value for ${arg}. Usage: ${COMMAND_NAME} issue update <issue-id> [options]`,
+		);
+	}
+
+	return value;
+}
+
+function applyIssueUpdateOption(
+	options: IssueUpdateOptions,
+	args: string[],
+	index: number,
+): boolean {
+	const arg = args[index];
+	if (!arg) {
+		return false;
+	}
+
+	switch (arg) {
+		case "-t":
+		case "--title":
+			options.title = readIssueUpdateOptionValue(args, index, arg);
+			return true;
+		case "-d":
+		case "--description":
+			options.description = readIssueUpdateOptionValue(args, index, arg);
+			return true;
+		case "--append-description":
+			options.appendDescription = readIssueUpdateOptionValue(args, index, arg);
+			return true;
+		case "-i":
+		case "--image":
+			options.imagePaths.push(readIssueUpdateOptionValue(args, index, arg));
+			return true;
+		case "-s":
+		case "--status":
+			options.status = readIssueUpdateOptionValue(args, index, arg);
+			return true;
+		default:
+			return false;
+	}
+}
+
+function validateIssueUpdateOptions(options: IssueUpdateOptions): void {
+	if (!options.issueId) {
+		throw new Error(
+			`Missing issue id. Usage: ${COMMAND_NAME} issue update <issue-id> [options]`,
+		);
+	}
+	if (options.description !== undefined && options.appendDescription !== undefined) {
+		throw new Error("Use either --description or --append-description, not both");
+	}
+	if (
+		options.title === undefined &&
+		options.description === undefined &&
+		options.appendDescription === undefined &&
+		options.status === undefined &&
+		options.imagePaths.length === 0
+	) {
+		throw new Error("No issue updates provided");
+	}
+}
+
+function parseIssueUpdateOptions(args: string[]): IssueUpdateOptions {
+	const options: IssueUpdateOptions = { issueId: "", imagePaths: [] };
+
+	for (let index = 0; index < args.length; index += 1) {
+		const arg = args[index];
+
+		if (applyIssueUpdateOption(options, args, index)) {
+			index += 1;
+			continue;
+		}
+
+		if (arg?.startsWith("-")) {
+			throw new Error(
+				`Unknown issue update option: ${arg}. Usage: ${COMMAND_NAME} issue update <issue-id> [options]`,
+			);
+		}
+		if (options.issueId) {
+			throw new Error(
+				`Unexpected argument: ${arg}. Usage: ${COMMAND_NAME} issue update <issue-id> [options]`,
+			);
+		}
+
+		options.issueId = arg ?? "";
+	}
+
+	validateIssueUpdateOptions(options);
+	return options;
+}
+
+function appendDescription(
+	existingDescription: string | null | undefined,
+	appendText: string,
+): string {
+	const existing = existingDescription?.trim();
+	return existing ? `${existing}\n\n${appendText}` : appendText;
+}
+
+async function resolveIssueStatusId(
+	issue: IssueNode,
+	status: string,
+): Promise<string> {
+	if (UUID_PATTERN.test(status)) {
+		return status;
+	}
+
+	const team = await issue.team;
+	if (!team) {
+		throw new Error(`Issue ${issue.identifier} does not have an accessible team`);
+	}
+
+	return (await findWorkflowState(team, status)).id;
+}
+
+async function updateIssue(args: string[]): Promise<void> {
+	if (hasHelpOption(args)) {
+		printIssueUpdateHelp();
+		return;
+	}
+
+	const options = parseIssueUpdateOptions(args);
+	const linearClient = await createLinearClient();
+	const issue = await linearClient.issue(options.issueId);
+	const uploadedImages = await uploadIssueImages(
+		linearClient,
+		options.imagePaths,
+	);
+	const updateInput: IssueUpdateInput = {};
+
+	if (options.title !== undefined) {
+		updateInput.title = options.title;
+	}
+	if (options.description !== undefined) {
+		updateInput.description = appendUploadedImagesToDescription(
+			options.description,
+			uploadedImages,
+		);
+	} else if (options.appendDescription !== undefined) {
+		updateInput.description = appendUploadedImagesToDescription(
+			appendDescription(issue.description, options.appendDescription),
+			uploadedImages,
+		);
+	} else if (uploadedImages.length > 0) {
+		updateInput.description = appendUploadedImagesToDescription(
+			issue.description ?? undefined,
+			uploadedImages,
+		);
+	}
+	if (options.status !== undefined) {
+		updateInput.stateId = await resolveIssueStatusId(issue, options.status);
+	}
+
+	const payload = await linearClient.updateIssue(issue.id, updateInput);
+	const updatedIssue = await payload.issue;
+
+	if (!payload.success || !updatedIssue) {
+		throw new Error("Linear did not return an updated issue");
+	}
+
+	console.log(
+		`Updated ${updatedIssue.identifier} (${updatedIssue.id}): ${updatedIssue.title}`,
+	);
 }
 
 function parseIssueDeleteOptions(args: string[]): IssueDeleteOptions {
@@ -1019,6 +1236,9 @@ async function runIssueCommand(args: string[]): Promise<void> {
 			return;
 		case "add":
 			await addIssue(subcommandArgs);
+			return;
+		case "update":
+			await updateIssue(subcommandArgs);
 			return;
 		case "delete":
 			await deleteIssue(subcommandArgs);

@@ -115,6 +115,15 @@ linear issue add "Fix login bug" -d "See screenshots" --image ./before.png --ima
 
 Image uploads support `gif`, `jpeg`, `jpg`, `png`, and `webp`. Uploaded images are embedded in the issue description.
 
+Update issue title, description, images, or status:
+
+```bash
+linear issue update LIN-123 -t "Better title"
+linear issue update LIN-123 -d "Replace the issue description"
+linear issue update LIN-123 --append-description "Additional notes" --image ./screenshot.png
+linear issue update LIN-123 -s Done
+```
+
 Delete an issue by Linear issue id:
 
 ```bash
