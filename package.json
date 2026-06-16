@@ -1,6 +1,6 @@
 {
   "name": "@fe-essential/linear-cli",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "A Bun-based CLI for Linear.",
   "repository": {
     "type": "git",
